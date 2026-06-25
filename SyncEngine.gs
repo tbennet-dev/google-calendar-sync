@@ -2,7 +2,7 @@
  * Syncs events from sourceCalendar to targetCalendar.
  * Uses incremental sync tokens when available, falls back to full sync.
  */
-function syncDirection(sourceCalendarId, targetCalendarId, prefix, syncTokenKey, stripDetails) {
+function syncDirection(sourceCalendarId, targetCalendarId, syncTokenKey, options) {
   logInfo('Syncing: ' + sourceCalendarId + ' → ' + targetCalendarId);
 
   var props = PropertiesService.getScriptProperties();
@@ -13,8 +13,8 @@ function syncDirection(sourceCalendarId, targetCalendarId, prefix, syncTokenKey,
 
   try {
     do {
-      var options = buildListOptions_(syncToken, pageToken);
-      var response = Calendar.Events.list(sourceCalendarId, options);
+      var listOptions = buildListOptions_(syncToken, pageToken);
+      var response = Calendar.Events.list(sourceCalendarId, listOptions);
 
       if (response.items) {
         events = events.concat(response.items);
@@ -28,7 +28,7 @@ function syncDirection(sourceCalendarId, targetCalendarId, prefix, syncTokenKey,
     if (e.message && e.message.indexOf('410') !== -1) {
       logInfo('Sync token expired (410 Gone), falling back to full sync');
       props.deleteProperty(syncTokenKey);
-      syncDirection(sourceCalendarId, targetCalendarId, prefix, syncTokenKey, stripDetails);
+      syncDirection(sourceCalendarId, targetCalendarId, syncTokenKey, options);
       return;
     }
     throw e;
@@ -43,7 +43,7 @@ function syncDirection(sourceCalendarId, targetCalendarId, prefix, syncTokenKey,
   for (var i = 0; i < events.length; i++) {
     var event = events[i];
     safeExecute(function() {
-      processEvent_(event, sourceCalendarId, targetCalendarId, prefix, stripDetails);
+      processEvent_(event, sourceCalendarId, targetCalendarId, options);
     }, 'Processing event: ' + (event.summary || event.id));
   }
 }
@@ -80,8 +80,12 @@ function buildListOptions_(syncToken, pageToken) {
 /**
  * Processes a single event: skip synced copies, delete or create/update as needed.
  */
-function processEvent_(event, sourceCalendarId, targetCalendarId, prefix, stripDetails) {
+function processEvent_(event, sourceCalendarId, targetCalendarId, options) {
   if (isSyncedCopy(event)) {
+    return;
+  }
+
+  if (event.eventType === 'workingLocation') {
     return;
   }
 
@@ -90,7 +94,7 @@ function processEvent_(event, sourceCalendarId, targetCalendarId, prefix, stripD
   if (shouldDelete) {
     handleDeletion(event, sourceCalendarId, targetCalendarId);
   } else {
-    createOrUpdateSyncedCopy(event, sourceCalendarId, targetCalendarId, prefix, stripDetails);
+    createOrUpdateSyncedCopy(event, sourceCalendarId, targetCalendarId, options);
   }
 }
 

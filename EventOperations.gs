@@ -1,9 +1,9 @@
 /**
  * Creates or updates a synced copy of the source event in the target calendar.
  */
-function createOrUpdateSyncedCopy(sourceEvent, sourceCalendarId, targetCalendarId, prefix, stripDetails) {
+function createOrUpdateSyncedCopy(sourceEvent, sourceCalendarId, targetCalendarId, options) {
   var existingCopy = findSyncedCopy(sourceEvent.id, sourceCalendarId, targetCalendarId);
-  var resource = buildSyncedEventResource(sourceEvent, sourceCalendarId, prefix, stripDetails);
+  var resource = buildSyncedEventResource(sourceEvent, sourceCalendarId, options);
 
   if (existingCopy) {
     Calendar.Events.update(resource, targetCalendarId, existingCopy.id, {
@@ -40,11 +40,11 @@ function findSyncedCopy(sourceEventId, sourceCalendarId, targetCalendarId) {
 /**
  * Builds the event resource object for the synced copy.
  */
-function buildSyncedEventResource(sourceEvent, sourceCalendarId, prefix, stripDetails) {
+function buildSyncedEventResource(sourceEvent, sourceCalendarId, options) {
   var resource = {
-    summary: stripDetails
+    summary: options.stripDetails
       ? CONFIG.STRIPPED_TITLE
-      : prefix + (sourceEvent.summary || '(No title)'),
+      : options.prefix + (sourceEvent.summary || '(No title)'),
     start: sourceEvent.start,
     end: sourceEvent.end,
     extendedProperties: {
@@ -59,9 +59,13 @@ function buildSyncedEventResource(sourceEvent, sourceCalendarId, prefix, stripDe
   resource.extendedProperties.private[CONFIG.EXT_PROP_SOURCE_CALENDAR_ID] = sourceCalendarId;
   resource.extendedProperties.private[CONFIG.EXT_PROP_SOURCE_EVENT_ID] = sourceEvent.id;
 
+  if (options.useDefaultColor !== true) {
+    resource.colorId = options.colorId;
+  }
+
   var rsvpStatus = getRsvpStatus_(sourceEvent, sourceCalendarId);
 
-  if (stripDetails) {
+  if (options.stripDetails) {
     if (rsvpStatus) {
       resource.description = rsvpStatus;
     }
@@ -82,6 +86,7 @@ function buildSyncedEventResource(sourceEvent, sourceCalendarId, prefix, stripDe
       resource.conferenceData = sourceEvent.conferenceData;
     }
   }
+
 
   if (sourceEvent.transparency) {
     resource.transparency = sourceEvent.transparency;
