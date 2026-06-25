@@ -40,12 +40,61 @@ function syncDirection(sourceCalendarId, targetCalendarId, syncTokenKey, options
 
   logInfo('Fetched ' + events.length + ' event(s) to process');
 
-  for (var i = 0; i < events.length; i++) {
-    var event = events[i];
-    safeExecute(function() {
-      processEvent_(event, sourceCalendarId, targetCalendarId, options);
-    }, 'Processing event: ' + (event.summary || event.id));
+  if (options.maxEvents) {
+    events = events.slice(0, options.maxEvents);
   }
+
+  var syncedCopyMap = buildSyncedCopyMap_(targetCalendarId);
+
+  for (var i = 0; i < events.length; i++) {
+    if (!events[i]) continue;
+    (function(event) {
+      safeExecute(function() {
+        processEvent_(event, sourceCalendarId, targetCalendarId, options, syncedCopyMap);
+      }, 'Processing event: ' + (event.summary || event.id));
+    })(events[i]);
+  }
+}
+
+/**
+ * Fetches all events in the target calendar for the sync window and builds a map
+ * of sourceEventId -> copy event. Avoids per-event API lookups which are unreliable
+ * on some Google Workspace domains (e.g. GSA) due to privateExtendedProperty indexing.
+ */
+function buildSyncedCopyMap_(targetCalendarId) {
+  var map = {};
+  var now = new Date();
+  var maxDate = new Date(now.getTime() + CONFIG.FULL_SYNC_DAYS * 24 * 60 * 60 * 1000);
+  var pageToken = null;
+
+  do {
+    var options = {
+      timeMin: now.toISOString(),
+      timeMax: maxDate.toISOString(),
+      singleEvents: true,
+      showDeleted: false,
+      maxResults: 250
+    };
+    if (pageToken) options.pageToken = pageToken;
+
+    var response = Calendar.Events.list(targetCalendarId, options);
+    var items = response.items || [];
+
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (item.extendedProperties &&
+          item.extendedProperties.private &&
+          item.extendedProperties.private[CONFIG.EXT_PROP_SOURCE_EVENT_ID]) {
+        var sourceId = item.extendedProperties.private[CONFIG.EXT_PROP_SOURCE_EVENT_ID];
+        map[sourceId] = item;
+      }
+    }
+
+    pageToken = response.nextPageToken;
+  } while (pageToken);
+
+  logInfo('Built synced copy map with ' + Object.keys(map).length + ' entries');
+  return map;
 }
 
 /**
@@ -80,7 +129,7 @@ function buildListOptions_(syncToken, pageToken) {
 /**
  * Processes a single event: skip synced copies, delete or create/update as needed.
  */
-function processEvent_(event, sourceCalendarId, targetCalendarId, options) {
+function processEvent_(event, sourceCalendarId, targetCalendarId, options, syncedCopyMap) {
   if (event.eventType === 'workingLocation') {
     return;
   }
@@ -92,9 +141,9 @@ function processEvent_(event, sourceCalendarId, targetCalendarId, options) {
   var shouldDelete = event.status === 'cancelled' || isDeclined(event, sourceCalendarId);
 
   if (shouldDelete) {
-    handleDeletion(event, sourceCalendarId, targetCalendarId);
+    handleDeletion(event, sourceCalendarId, targetCalendarId, syncedCopyMap);
   } else {
-    createOrUpdateSyncedCopy(event, sourceCalendarId, targetCalendarId, options);
+    createOrUpdateSyncedCopy(event, sourceCalendarId, targetCalendarId, options, syncedCopyMap);
   }
 }
 
