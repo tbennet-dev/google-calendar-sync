@@ -59,7 +59,7 @@ function buildSyncedEventResource(sourceEvent, sourceCalendarId, options) {
   resource.extendedProperties.private[CONFIG.EXT_PROP_SOURCE_CALENDAR_ID] = sourceCalendarId;
   resource.extendedProperties.private[CONFIG.EXT_PROP_SOURCE_EVENT_ID] = sourceEvent.id;
 
-  if (options.useDefaultColor !== true) {
+  if (!options.useDefaultColor) {
     resource.colorId = options.colorId;
   }
 
