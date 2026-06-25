@@ -81,11 +81,11 @@ function buildListOptions_(syncToken, pageToken) {
  * Processes a single event: skip synced copies, delete or create/update as needed.
  */
 function processEvent_(event, sourceCalendarId, targetCalendarId, options) {
-  if (isSyncedCopy(event)) {
+  if (event.eventType === 'workingLocation') {
     return;
   }
 
-  if (event.eventType === 'workingLocation') {
+  if (isSyncedCopy(event)) {
     return;
   }
 
